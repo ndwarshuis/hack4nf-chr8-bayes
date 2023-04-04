@@ -1,0 +1,9 @@
+name: hack4nf-jags-jags
+channels:
+  - conda-forge
+dependencies:
+  - r-tidyverse
+  - r-r2jags
+  - r-lintr
+  - r-styler
+  - snakefmt

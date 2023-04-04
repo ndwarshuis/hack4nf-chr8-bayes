@@ -1,6 +1,76 @@
 from snakemake.utils import min_version
+from pathlib import Path
 
 min_version("7.25")
 
+src_dir = Path("resources")
+proc_dir = Path("results")
 
-configfile: "config/config.yml"
+
+# configfile: "config/config.yml"
+
+
+# secondary-screen-mfi.csv
+rule download_depmap_mfi:
+    output:
+        src_dir / "depmap" / "mfi.csv",
+    params:
+        id="20237742",
+    shell:
+        "curl -L -Ss -q https://ndownloader.figshare.com/files/{params.id} > {output}"
+
+
+# secondary-screen-pooling-info.csv
+use rule download_depmap_mfi as download_depmap_pooling with:
+    output:
+        src_dir / "depmap" / "pooling_info.csv",
+    params:
+        id="20237742",
+
+
+# secondary-screen-cell-line-info.csv
+use rule download_depmap_mfi as download_depmap_pool_info with:
+    output:
+        src_dir / "depmap" / "pool_info.csv",
+    params:
+        id="20237766",
+
+
+# secondary-screen-replicate-treatment-info.csv
+use rule download_depmap_mfi as download_depmap_treatments with:
+    output:
+        src_dir / "depmap" / "treatments.csv",
+    params:
+        id="20237760",
+
+
+# secondary-screen-replicate-treatment-info.csv
+use rule download_depmap_mfi as download_depmap_cell_info with:
+    output:
+        src_dir / "depmap" / "cells.csv",
+    params:
+        id="20237718",
+
+
+# the 8q file was removed...thanks broad :/ download an alternative manually from
+# https://depmap.org/portal/download/all/?releasename=CCLE+arm-level+CNAs&filename=arm_call_scores.csv
+
+
+rule make_dose_table:
+    input:
+        mfi=rules.download_depmap_mfi.output,
+        pool=rules.download_depmap_pool_info.output,
+        treat=rules.download_depmap_treatments.output,
+        cell=rules.download_depmap_cell_info.output,
+        cna=src_dir / "depmap" / "CNA.csv",
+    output:
+        proc_dir / "depmap" / "dose_mfi.tsv.gz",
+    conda:
+        "envs/jags.yml"
+    script:
+        "scripts/make_dose_table.R"
+
+
+rule all:
+    input:
+        rules.make_dose_table.output,

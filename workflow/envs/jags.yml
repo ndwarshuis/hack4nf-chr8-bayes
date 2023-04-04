@@ -2,8 +2,9 @@ name: hack4nf-jags-jags
 channels:
   - conda-forge
 dependencies:
-  - r-tidyverse
-  - r-r2jags
-  - r-lintr
-  - r-styler
-  - snakefmt
+  - r-tidyverse # obviously
+  - r-r2jags # magic...
+  - r-lintr # yell at bad code
+  - r-styler # I like pretty things
+  - r-furrr # CPU go weeeeeeeee
+  - snakefmt # I like (more) pretty things

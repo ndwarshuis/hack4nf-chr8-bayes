@@ -71,6 +71,19 @@ rule make_dose_table:
         "scripts/make_dose_table.R"
 
 
-rule all:
+rule fit_models:
     input:
         rules.make_dose_table.output,
+    output:
+        sims=proc_dir / "models" / "sims.tsv.gz",
+        summary=proc_dir / "models" / "summary.tsv.gz",
+    conda:
+        "envs/jags.yml"
+    threads: 8
+    script:
+        "scripts/train.R"
+
+
+rule all:
+    input:
+        rules.fit_models.output,

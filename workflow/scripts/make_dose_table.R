@@ -43,7 +43,6 @@ chr8_df <- readr::read_csv(
 cell_df <- readr::read_csv(
   snakemake@input[["cell"]],
   col_types = cols("row_name" = "c",
-                   "ccle_name" = "c",
                    "primary_tissue" = "f",
                    .default = "-")) %>%
   rename(cell_line = "row_name")
@@ -78,7 +77,6 @@ filter(ndata_df, perturbation_type == "experimental_treatment") %>%
   filter(is.finite(viability)) %>%
   select(cell_line, condition_id, screen_id, detection_plate, name, dose, viability) %>%
   left_join(chr8_df, by = "cell_line") %>%
-  left_join(cell_df, by = c("cell_line")) %>%
-  filter(primary_tissue %in% c("peripheral_nervous_system")) %>%
+  left_join(cell_df, by = "cell_line") %>%
   readr::write_tsv(snakemake@output[[1]])
 

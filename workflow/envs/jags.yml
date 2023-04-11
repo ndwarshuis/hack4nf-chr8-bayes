@@ -1,6 +1,7 @@
 name: hack4nf-jags-jags
 channels:
   - conda-forge
+  - bioconda
 dependencies:
   - r-tidyverse # obviously
   - r-r2jags # magic...

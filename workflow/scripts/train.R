@@ -2,6 +2,9 @@ library(tidyverse)
 library(R2jags)
 library(furrr)
 
+extract_summary_col <- function(fit, name) {
+  set_names(fit$BUGSoutput$summary[, name], ~ sprintf("%s_%s", .x, name))
+}
 
 # TODO add r^2
 train_model <- function(df, key) {
@@ -49,17 +52,24 @@ train_model <- function(df, key) {
     n.thin = 10,
     DIC = F
   )
-  fit
-}
-
-extract_summary_col <- function(x, name) {
-  set_names(x$fit$BUGSoutput$summary[, name], ~ sprintf("%s_%s", .x, name))
+  list(
+    summary = c(
+      extract_summary_col(fit, "mean"),
+      extract_summary_col(fit, "sd"),
+      extract_summary_col(fit, "Rhat"),
+      extract_summary_col(fit, "n.eff")
+    ),
+    sims = fit$BUGSoutput$sims.array
+  )
+  ## fit
 }
 
 plan(multicore, workers = snakemake@threads)
+## plan(multicore, workers = 8)
 
 exp_df <- readr::read_tsv(
   snakemake@input[[1]],
+  ## "../../results/depmap/dose_mfi.tsv.gz",
   col_types = cols(
     dose = "d",
     viability = "d",
@@ -70,10 +80,11 @@ exp_df <- readr::read_tsv(
 
 exp_lst <- exp_df %>%
   filter(gain == 1) %>%
+  ## slice_head(n = 1000) %>%
   group_by(cell_line, name) %>%
   group_map(~ list(df = .x, cell_line = .y$cell_line, drug = .y$name)) %>%
-  head() %>%
-  future_map(~ c(.x, list(fit = train_model(.x$df))),
+  ## head() %>%
+  future_map(~ c(cell_line = .x$cell_line, drug = .x$drug, train_model(.x$df)),
              .options = furrr_options(seed = 123, stdout = FALSE))
 
 exp_lst %>%
@@ -82,11 +93,10 @@ exp_lst %>%
       cell_line = .x$cell_line,
       drug = .x$drug
     ),
-    extract_summary_col(.x, "mean"),
-    extract_summary_col(.x, "sd"),
-    extract_summary_col(.x, "Rhat"),
-    extract_summary_col(.x, "n.eff")
+    .x$summary
   )) %>%
+  mutate(cell_line = factor(cell_line),
+         drug = factor(drug)) %>%
   pivot_longer(cols = c(-cell_line, -drug)) %>%
   separate(name, c("var", "stat"), "_") %>%
   readr::write_tsv(snakemake@output[["summary"]])
@@ -97,8 +107,10 @@ exp_lst %>%
       cell_line = .x$cell_line,
       drug = .x$drug
     ),
-    as_tibble(.x$fit$BUGSoutput$sims.array)
+    as_tibble(.x$sims)
   )) %>%
+  mutate(cell_line = factor(cell_line),
+         drug = factor(drug)) %>%
   pivot_longer(cols = c(-cell_line, -drug)) %>%
   separate(name, c("chain", "var"), "\\.") %>%
   readr::write_tsv(snakemake@output[["sims"]])

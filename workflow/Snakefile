@@ -77,6 +77,7 @@ rule fit_models:
     output:
         sims=proc_dir / "models" / "sims.tsv.gz",
         summary=proc_dir / "models" / "summary.tsv.gz",
+        ids=proc_dir / "models" / "ids.tsv.gz",
     conda:
         "envs/jags.yml"
     threads: 8

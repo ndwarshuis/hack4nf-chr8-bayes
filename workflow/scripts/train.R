@@ -61,7 +61,6 @@ train_model <- function(df, key) {
     ),
     sims = fit$BUGSoutput$sims.array
   )
-  ## fit
 }
 
 plan(multicore, workers = snakemake@threads)
@@ -73,44 +72,33 @@ exp_df <- readr::read_tsv(
   col_types = cols(
     dose = "d",
     viability = "d",
-    gain = "d",
-    .default = "c"
+    cell_line = "f",
+    name = "f",
+    .default = "-"
   )
-)
+) %>%
+  group_by(cell_line, name) %>%
+  mutate(id = cur_group_id()) %>%
+  ungroup()
+
+id_df <- exp_df %>%
+  select(cell_line, name, id) %>%
+  unique() %>%
+  readr::write_tsv(snakemake@output[["ids"]])
 
 exp_lst <- exp_df %>%
-  filter(gain == 1) %>%
+  select(-cell_line, -name) %>%
   ## slice_head(n = 1000) %>%
-  group_by(cell_line, name) %>%
-  group_map(~ list(df = .x, cell_line = .y$cell_line, drug = .y$name)) %>%
+  group_by(id) %>%
+  group_map(~ list(df = .x, id = .y$id)) %>%
   ## head() %>%
-  future_map(~ c(cell_line = .x$cell_line, drug = .x$drug, train_model(.x$df)),
+  future_map(~ c(id = .x$id, train_model(.x$df)),
              .options = furrr_options(seed = 123, stdout = FALSE))
 
 exp_lst %>%
-  map_dfr(~ c(
-    list(
-      cell_line = .x$cell_line,
-      drug = .x$drug
-    ),
-    .x$summary
-  )) %>%
-  mutate(cell_line = factor(cell_line),
-         drug = factor(drug)) %>%
-  pivot_longer(cols = c(-cell_line, -drug)) %>%
-  separate(name, c("var", "stat"), "_") %>%
+  map_dfr(~ c(list(id = .x$id), .x$summary)) %>%
   readr::write_tsv(snakemake@output[["summary"]])
 
 exp_lst %>%
-  map_dfr(~ c(
-    list(
-      cell_line = .x$cell_line,
-      drug = .x$drug
-    ),
-    as_tibble(.x$sims)
-  )) %>%
-  mutate(cell_line = factor(cell_line),
-         drug = factor(drug)) %>%
-  pivot_longer(cols = c(-cell_line, -drug)) %>%
-  separate(name, c("chain", "var"), "\\.") %>%
+  map_dfr(~ c(list(id = .x$id), as_tibble(.x$sims))) %>%
   readr::write_tsv(snakemake@output[["sims"]])

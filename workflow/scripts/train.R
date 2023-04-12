@@ -90,10 +90,10 @@ exp_df %>%
 
 exp_lst <- exp_df %>%
   select(-cell_line, -name) %>%
-  slice_head(n = 1000) %>%
+  ## slice_head(n = 1000) %>%
   group_by(id) %>%
   group_map(~ list(df = .x, id = .y$id)) %>%
-  head() %>%
+  ## head() %>%
   future_map(~ c(id = .x$id, train_model(.x$df)),
              .options = furrr_options(seed = 123, stdout = FALSE))
 

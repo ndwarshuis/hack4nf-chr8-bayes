@@ -75,9 +75,9 @@ rule fit_models:
     input:
         rules.make_dose_table.output,
     output:
-        sims=proc_dir / "models" / "sims.tsv.gz",
-        summary=proc_dir / "models" / "summary.tsv.gz",
-        ids=proc_dir / "models" / "ids.tsv.gz",
+        sims=proc_dir / "models" / "sims_{gain}.tsv.gz",
+        summary=proc_dir / "models" / "summary_{gain}.tsv.gz",
+        ids=proc_dir / "models" / "ids_{gain}.tsv.gz",
     conda:
         "envs/jags.yml"
     threads: 8
@@ -87,4 +87,4 @@ rule fit_models:
 
 rule all:
     input:
-        rules.fit_models.output,
+        expand(rules.fit_models.output, gain=[0, 1]),

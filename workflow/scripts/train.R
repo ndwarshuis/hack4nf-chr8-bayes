@@ -63,7 +63,7 @@ train_model <- function(df, key) {
   )
 }
 
-plan(multicore, workers = snakemake@threads)
+plan(multisession, workers = snakemake@threads)
 ## plan(multicore, workers = 8)
 
 exp_df <- readr::read_tsv(

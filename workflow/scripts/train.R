@@ -1,6 +1,9 @@
+con <- file(snakemake@log[[1]])
+sink(con, append=TRUE)
+sink(con, append=TRUE, type="message")
+
 library(tidyverse)
 library(R2jags)
-library(furrr)
 
 extract_summary_col <- function(fit, name) {
   set_names(fit$BUGSoutput$summary[, name], ~ sprintf("%s_%s", .x, name))
@@ -63,44 +66,20 @@ train_model <- function(df, key) {
   )
 }
 
-plan(multisession, workers = snakemake@threads)
-## plan(multisession, workers = 8)
-
 exp_df <- readr::read_tsv(
   snakemake@input[[1]],
-  ## "../../results/depmap/dose_mfi.tsv.gz",
   col_types = cols(
     dose = "d",
     viability = "d",
-    gain = "d",
-    cell_line = "f",
-    name = "f",
     .default = "-"
   )
-) %>%
-  group_by(cell_line, name) %>%
-  mutate(id = cur_group_id()) %>%
-  filter(gain == snakemake@wildcards[["gain"]]) %>%
-  ungroup()
+)
 
-exp_df %>%
-  select(cell_line, name, id) %>%
-  unique() %>%
-  readr::write_tsv(snakemake@output[["ids"]])
+mod <- train_model(exp_df)
 
-exp_lst <- exp_df %>%
-  select(-cell_line, -name) %>%
-  ## slice_head(n = 1000) %>%
-  group_by(id) %>%
-  group_map(~ list(df = .x, id = .y$id)) %>%
-  ## head() %>%
-  future_map(~ c(id = .x$id, train_model(.x$df)),
-             .options = furrr_options(seed = 123, stdout = FALSE))
-
-exp_lst %>%
-  map_dfr(~ c(list(id = .x$id), .x$summary)) %>%
+tibble(id = mod$id, mod$summary) %>%
   readr::write_tsv(snakemake@output[["summary"]])
 
-exp_lst %>%
-  map_dfr(~ c(list(id = .x$id), as_tibble(.x$sims))) %>%
+as_tibble(mod$sims) %>%
+  mutate(id = mod$id) %>%
   readr::write_tsv(snakemake@output[["sims"]])

@@ -71,37 +71,20 @@ rule make_dose_table:
         "scripts/make_dose_table.R"
 
 
-checkpoint split_dose_table:
+rule fit_models:
     input:
         rules.make_dose_table.output,
     output:
-        proc_dir / "models" / "doses" / "ids.tsv",
+        sims=proc_dir / "models" / "sims_{gain}.tsv.gz",
+        summary=proc_dir / "models" / "summary_{gain}.tsv.gz",
+        ids=proc_dir / "models" / "ids_{gain}.tsv.gz",
     conda:
         "envs/jags.yml"
-    script:
-        "scripts/split.R"
-
-
-rule train_models:
-    input:
-        Path(rules.split_dose_table.output[0]).parent / "{id}.tsv",
-    output:
-        summary=proc_dir / "models" / "summary" / "{id}.tsv",
-        sims=proc_dir / "models" / "sims" / "{id}.tsv",
-    conda:
-        "envs/jags.yml"
-    log:
-        proc_dir / "models" / "train_log" / "{id}.txt",
+    threads: 8
     script:
         "scripts/train.R"
 
 
-def all_models(_):
-    with checkpoints.split_dose_table.get().output[0].open() as f:
-        ids = [i for i in [r.split("\t")[0] for r in f] if i.isnumeric()]
-        return expand(rules.train_models.output, id=ids)
-
-
 rule all:
     input:
-        all_models,
+        expand(rules.fit_models.output, gain=[0, 1]),

@@ -2,12 +2,23 @@ library(tidyverse)
 library(R2jags)
 library(furrr)
 
+cachedir <- snakemake@params[["cachedir"]]
+logdir <- file.path(cachedir, "log")
+sumdir <- file.path(cachedir, "sums")
+simdir <- file.path(cachedir, "sims")
+
+walk(
+  c(logdir, sumdir, simdir),
+  ~ dir.create(.x, showWarnings = FALSE, recursive = TRUE)
+)
+
 extract_summary_col <- function(fit, name) {
   set_names(fit$BUGSoutput$summary[, name], ~ sprintf("%s_%s", .x, name))
 }
 
 # TODO add r^2
-train_model <- function(df, key) {
+train_model <- function(df) {
+
   mod_spec <- function() {
     # Likelihood:
     for (i in 1:N) {
@@ -63,44 +74,81 @@ train_model <- function(df, key) {
   )
 }
 
-plan(multisession, workers = snakemake@threads)
+write_model <- function(df, .id) {
+  # set up logging locally
+  logfile <- file.path(logdir, sprintf("%s.txt", .id))
+  file.create(logfile)
+  con <- file(logfile)
+  sink(con, append=TRUE)
+  sink(con, append=TRUE, type="message")
+
+  mod <- filter(df, id == .id) %>% train_model()
+
+  as_tibble(as.list(mod$summary)) %>%
+    mutate(id = .id) %>%
+    readr::write_tsv(file.path(sumdir, sprintf("%s.tsv", .id)))
+
+  as_tibble(mod$sims) %>%
+    mutate(id = .id) %>%
+    readr::write_tsv(file.path(simdir, sprintf("%s.tsv", .id)))
+
+  sink(NULL, append=TRUE)
+  sink(NULL, append=TRUE, type="message")
+}
+
+plan(multicore, workers = snakemake@threads)
 ## plan(multisession, workers = 8)
 
 exp_df <- readr::read_tsv(
   snakemake@input[[1]],
   ## "../../results/depmap/dose_mfi.tsv.gz",
+  lazy = TRUE,
   col_types = cols(
     dose = "d",
     viability = "d",
-    gain = "d",
     cell_line = "f",
     name = "f",
     .default = "-"
   )
 ) %>%
+  ## slice_head(n = 2000) %>%
   group_by(cell_line, name) %>%
   mutate(id = cur_group_id()) %>%
-  filter(gain == snakemake@wildcards[["gain"]]) %>%
   ungroup()
 
-exp_df %>%
+id_df <- exp_df %>%
   select(cell_line, name, id) %>%
-  unique() %>%
-  readr::write_tsv(snakemake@output[["ids"]])
+  unique()
 
-exp_lst <- exp_df %>%
-  select(-cell_line, -name) %>%
-  ## slice_head(n = 1000) %>%
-  group_by(id) %>%
-  group_map(~ list(df = .x, id = .y$id)) %>%
-  ## head() %>%
-  future_map(~ c(id = .x$id, train_model(.x$df)),
-             .options = furrr_options(seed = 123, stdout = FALSE))
+all_ids <- id_df$id
 
-exp_lst %>%
-  map_dfr(~ c(list(id = .x$id), .x$summary)) %>%
+# ASSUME summary and sim matrix will be in sync
+current_ids <- list.files(sumdir, full.names = TRUE) %>%
+  map(~ as.integer(str_extract(basename(.x), "[0-9]+")))
+
+# TODO use md5s here to really figure out what needs to be (re)done?
+ids_to_train <- setdiff(all_ids, current_ids)
+
+message(sprintf("ids to be trained: %s\n", str_c(ids_to_train, collapse = ", ")))
+
+ids_to_train %>%
+  future_walk(
+    ~ write_model(exp_df, .x),
+    .options = furrr_options(seed = 123, stdout = FALSE)
+  )
+
+readr::write_tsv(id_df, snakemake@output[["ids"]])
+
+# cat all cache files to satisfy snakemake
+list.files(sumdir, full.names = TRUE) %>%
+  map_dfr(~ readr::read_tsv(.x, col_types = "d")) %>%
   readr::write_tsv(snakemake@output[["summary"]])
 
-exp_lst %>%
-  map_dfr(~ c(list(id = .x$id), as_tibble(.x$sims))) %>%
+list.files(simdir, full.names = TRUE) %>%
+  map_dfr(~ readr::read_tsv(.x, col_types = "d")) %>%
   readr::write_tsv(snakemake@output[["sims"]])
+
+# remove all cache files assuming we succeeded
+list.files(sumdir, full.names = TRUE) %>%
+  c(list.files(simdir, full.names = TRUE)) %>%
+  walk(file.remove)

@@ -64,7 +64,8 @@ rule make_dose_table:
         cell=rules.download_depmap_cell_info.output,
         cna=src_dir / "depmap" / "CNA.csv",
     output:
-        proc_dir / "depmap" / "dose_mfi.tsv.gz",
+        doses=proc_dir / "depmap" / "dose_mfi.tsv.gz",
+        ids=proc_dir / "depmap" / "ids.tsv.gz",
     conda:
         "envs/jags.yml"
     script:
@@ -73,11 +74,11 @@ rule make_dose_table:
 
 rule fit_models:
     input:
-        rules.make_dose_table.output,
+        doses=rules.make_dose_table.output.doses,
+        ids=rules.make_dose_table.output.ids,
     output:
         sims=proc_dir / "models" / "sims.tsv.gz",
         summary=proc_dir / "models" / "summary.tsv.gz",
-        ids=proc_dir / "models" / "ids.tsv.gz",
     conda:
         "envs/jags.yml"
     threads: 8

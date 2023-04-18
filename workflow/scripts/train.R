@@ -47,8 +47,8 @@ train_model <- function(df) {
   }
 
   jags_data <- list(
-    b_resp = df$viability,
-    b_conc = df$dose,
+    b_resp = df[,"viability"],
+    b_conc = df[,"dose"],
     N = nrow(df)
   )
 
@@ -82,7 +82,7 @@ write_model <- function(df, .id) {
   sink(con, append=TRUE)
   sink(con, append=TRUE, type="message")
 
-  mod <- filter(df, id == .id) %>% train_model()
+  mod <- train_model(df)
 
   as_tibble(as.list(mod$summary)) %>%
     mutate(id = .id) %>%
@@ -97,28 +97,16 @@ write_model <- function(df, .id) {
 }
 
 plan(multicore, workers = snakemake@threads)
-## plan(multisession, workers = 8)
 
-exp_df <- readr::read_tsv(
-  snakemake@input[[1]],
-  ## "../../results/depmap/dose_mfi.tsv.gz",
+id_df <- readr::read_tsv(
+  snakemake@input[["ids"]],
   lazy = TRUE,
+  ## n_max = 100,
   col_types = cols(
-    dose = "d",
-    viability = "d",
-    cell_line = "f",
-    name = "f",
+    id = "d",
     .default = "-"
   )
-) %>%
-  ## slice_head(n = 2000) %>%
-  group_by(cell_line, name) %>%
-  mutate(id = cur_group_id()) %>%
-  ungroup()
-
-id_df <- exp_df %>%
-  select(cell_line, name, id) %>%
-  unique()
+)
 
 all_ids <- id_df$id
 
@@ -131,13 +119,26 @@ ids_to_train <- setdiff(all_ids, current_ids)
 
 message(sprintf("ids to be trained: %s\n", str_c(ids_to_train, collapse = ", ")))
 
-ids_to_train %>%
-  future_walk(
-    ~ write_model(exp_df, .x),
-    .options = furrr_options(seed = 123, stdout = FALSE)
+dose_df <- readr::read_tsv(
+  snakemake@input[["doses"]],
+  lazy = TRUE,
+  col_types = cols(
+    id = "i",
+    dose = "d",
+    viability = "d",
+    .default = "-"
   )
+) %>%
+  right_join(tibble(id = ids_to_train), by = "id") %>%
+  nest(.by = id) %>%
+  mutate(data = map(data, as.matrix))
 
-readr::write_tsv(id_df, snakemake@output[["ids"]])
+future_walk2(
+  dose_df$data,
+  as.list(dose_df$id),
+  write_model,
+  .options = furrr_options(seed = 123, stdout = FALSE)
+)
 
 # cat all cache files to satisfy snakemake
 list.files(sumdir, full.names = TRUE) %>%

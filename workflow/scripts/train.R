@@ -94,6 +94,7 @@ write_model <- function(df, .id) {
 
   sink(NULL, append=TRUE)
   sink(NULL, append=TRUE, type="message")
+  close(con)
 }
 
 plan(multicore, workers = snakemake@threads)

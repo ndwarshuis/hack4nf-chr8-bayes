@@ -64,7 +64,8 @@ rule make_dose_table:
         cell=rules.download_depmap_cell_info.output,
         cna=src_dir / "depmap" / "CNA.csv",
     output:
-        proc_dir / "depmap" / "dose_mfi.tsv.gz",
+        doses=proc_dir / "depmap" / "dose_mfi.tsv.gz",
+        ids=proc_dir / "depmap" / "ids.tsv.gz",
     conda:
         "envs/jags.yml"
     script:
@@ -73,11 +74,11 @@ rule make_dose_table:
 
 rule fit_models:
     input:
-        rules.make_dose_table.output,
+        doses=rules.make_dose_table.output.doses,
+        ids=rules.make_dose_table.output.ids,
     output:
         sims=proc_dir / "models" / "sims.tsv.gz",
         summary=proc_dir / "models" / "summary.tsv.gz",
-        ids=proc_dir / "models" / "ids.tsv.gz",
     conda:
         "envs/jags.yml"
     threads: 8
@@ -87,6 +88,23 @@ rule fit_models:
         "scripts/train.R"
 
 
+rule rank_drugs:
+    input:
+        sims=rules.fit_models.output.sims,
+        summary=rules.fit_models.output.summary,
+        ids=rules.make_dose_table.output.ids,
+    output:
+        chart=proc_dir / "rank" / "chart.png",
+        table=proc_dir / "rank" / "table.tsv",
+    conda:
+        "envs/jags.yml"
+    threads: 8
+    params:
+        refid="ACH-000099",
+    script:
+        "scripts/rank.R"
+
+
 rule all:
     input:
-        rules.fit_models.output,
+        rules.rank_drugs.output,

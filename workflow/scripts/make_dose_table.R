@@ -71,12 +71,24 @@ ctl_df <- ndata_df %>%
               names_from = perturbation_type,
               values_from = nMFI)
 
-filter(ndata_df, perturbation_type == "experimental_treatment") %>%
+final <- filter(ndata_df, perturbation_type == "experimental_treatment") %>%
   left_join(ctl_df, by = c("cell_line", "screen_id", "detection_plate")) %>%
   mutate(viability = (nMFI - positive_control) / (vehicle_control - positive_control)) %>%
   filter(is.finite(viability)) %>%
   select(cell_line, condition_id, screen_id, detection_plate, name, dose, viability) %>%
+  group_by(cell_line, name) %>%
+  mutate(id = cur_group_id()) %>%
+  ungroup() %>%
+  arrange(id)
+
+final %>%
+  select(cell_line, name, id) %>%
+  unique() %>%
   left_join(chr8_df, by = "cell_line") %>%
   left_join(cell_df, by = "cell_line") %>%
-  readr::write_tsv(snakemake@output[[1]])
+  readr::write_tsv(snakemake@output[["ids"]])
+
+final %>%
+  select(-cell_line, -name) %>%
+  readr::write_tsv(snakemake@output[["doses"]])
 

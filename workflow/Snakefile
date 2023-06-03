@@ -88,6 +88,23 @@ rule fit_models:
         "scripts/train.R"
 
 
+rule rank_drugs:
+    input:
+        sims=rules.fit_models.output.sims,
+        summary=rules.fit_models.output.summary,
+        ids=rules.make_dose_table.output.ids,
+    output:
+        chart=proc_dir / "rank" / "chart.png",
+        table=proc_dir / "rank" / "table.tsv",
+    conda:
+        "envs/jags.yml"
+    threads: 8
+    params:
+        refid="ACH-000099",
+    script:
+        "scripts/rank.R"
+
+
 rule all:
     input:
-        rules.fit_models.output,
+        rules.rank_drugs.output,

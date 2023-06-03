@@ -22,8 +22,8 @@ train_model <- function(df) {
   mod_spec <- function() {
     # Likelihood:
     for (i in 1:N) {
-      b_resp[i] ~ dnorm(mu[i], tau) # tau is precision (1 / variance)
-      mu[i] <- 1 / (1 + 2^(-kappa * (b_conc[i] - alpha)))
+      b_resp[i] ~ dt(mu[i], tau, nu) # tau is precision (1 / variance)
+      mu[i] <- beta / (1 + 2^(kappa * (b_conc[i] - alpha)))
     }
     # Priors (totally made up...ssshh)
     alpha ~ dnorm(au, a_sd) # ec50
@@ -33,29 +33,34 @@ train_model <- function(df) {
     kappa ~ dgamma(kr, ks) # slope
     kr ~ dnorm(2, 0.01)
     ks ~ dnorm(1, 0.01)
+    beta ~ dgamma(br, bs) # ceiling
+    br ~ dnorm(2, 0.01)
+    bs ~ dnorm(1, 0.01)
     # response
     sigma ~ dunif(0.01, 0.1) # standard deviation
     tau <- 1 / (sigma * sigma) # sigma^2 doesn't work in JAGS
+    nu ~ dnorm(250, 0.001)
   }
 
   init_values <- function() {
     list(
       alpha = rnorm(1),
       kappa = dgamma(2, 1),
+      beta = dgamma(2, 1),
       sigma = runif(0.1)
     )
   }
 
   jags_data <- list(
     b_resp = df[,"viability"],
-    b_conc = df[,"dose"],
+    b_conc = log10(df[,"dose"]),
     N = nrow(df)
   )
 
   fit <- jags(
     data = jags_data,
     inits = init_values,
-    parameters.to.save = c("alpha", "kappa", "sigma"),
+    parameters.to.save = c("alpha", "kappa", "beta", "sigma"),
     model.file = mod_spec,
     n.chains = 3,
     n.iter = 12000,
@@ -105,9 +110,11 @@ id_df <- readr::read_tsv(
   ## n_max = 100,
   col_types = cols(
     id = "d",
-    .default = "-"
+    gain = "i",
+    .default = "c"
   )
-)
+) %>%
+  filter(primary_tissue == "peripheral_nervous_system")
 
 all_ids <- id_df$id
 
@@ -141,10 +148,14 @@ future_walk2(
   .options = furrr_options(seed = 123, stdout = FALSE)
 )
 
+print("catting summaries")
+
 # cat all cache files to satisfy snakemake
 list.files(sumdir, full.names = TRUE) %>%
   map_dfr(~ readr::read_tsv(.x, col_types = "d")) %>%
   readr::write_tsv(snakemake@output[["summary"]])
+
+print("catting sims")
 
 list.files(simdir, full.names = TRUE) %>%
   map_dfr(~ readr::read_tsv(.x, col_types = "d")) %>%
